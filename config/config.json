@@ -1,0 +1,21 @@
+{
+  "Parameters":{
+    "AvailabilityZones":"us-west-1a, us-west-1b",
+    "KeyPairName":"EKS-Gitops-Test",
+    "QSS3BucketRegion":"us-west-1",
+    "QSS3BucketName":"BUCKET-NAME",
+    "EKSPublicAccessEndpoint":"Enabled",
+    "EfsStorageClass":"Enabled",
+    "ProvisionBastionHost" : "Enabled",
+    "PrometheusIntegration":"Enabled",
+    "ProvisionMetricsServer" : "Enabled",
+    "GrafanaIntegration" : "Enabled",
+    "NumberOfAZs":"2",
+    "RemoteAccessCIDR":"0.0.0.0/0",
+    "NumberOfNodes":"0",
+    "MaxNumberOfNodes" : "4",
+    "NodeInstanceType" : "t3.large",
+    "AdditionalEKSAdminUserArn" : "arn:aws:iam::518899565528:user/homecli",
+    "CalicoIntegration" : "Disabled"
+  }
+}
