@@ -1,0 +1,15 @@
+
+=== Launch Calico into Amazon EKS Quick Start
+include::eks-calico-entrypoint.template.adoc[]
+
+=== Launch Calico CRDS
+include::eks-calico-crds.template.adoc[]
+
+=== Launch Calico Enterprise CRDS
+include::eks-calico-enterprise-crds.template.adoc[]
+
+=== Launch Calico Operator
+include::eks-calico-operator.template.adoc[]
+
+=== Launch Calico Prometheus items
+include::eks-calico-prometheus.template.adoc[]

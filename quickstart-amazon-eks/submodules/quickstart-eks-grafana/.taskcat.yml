@@ -1,0 +1,9 @@
+project:
+  name: quickstart-eks-grafana
+  owner: quickstart-eng@amazon.com
+  regions: ["us-west-2"]
+  template: templates/eks-grafana.template.yaml
+  parameters:
+    Namespace: $[taskcat_random-string]
+tests:
+  default: {}

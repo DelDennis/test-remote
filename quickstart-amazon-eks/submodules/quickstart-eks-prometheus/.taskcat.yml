@@ -1,0 +1,9 @@
+project:
+  name: quickstart-eks-prometheus
+  owner: quickstart-eng@amazon.com
+  regions: ["us-west-2"]
+  template: templates/eks-prometheus.template.yaml
+  parameters:
+    Namespace: $[taskcat_random-string]
+tests:
+  default: {}
