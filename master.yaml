@@ -106,6 +106,7 @@ Metadata:
           - NodeGroupOS
           - NodeGroupType
           - NodeInstanceFamily
+          - CustomAmiId
       - Label:
           default: Snyk monitor (AWS Partner security)
         Parameters:
@@ -293,6 +294,8 @@ Metadata:
         default: Prometheus integration
       GrafanaIntegration:
         default: Grafana integration
+      CustomAmiId:
+        default: Custom AMI ID
 Parameters:
   AvailabilityZones:
     Description: List of Availability Zones to use for the subnets in the VPC. Three
@@ -630,6 +633,10 @@ Parameters:
     AllowedValues: [ Enabled, Disabled ]
     Default: Disabled
     Description: "For more information, see https://docs.aws.amazon.com/eks/latest/userguide/metrics-server.html"
+  CustomAmiId:
+    Type: String
+    Default: ""
+    Description: "(Optional) If an AMI ID is specified, it is used instead of the AMI from your OS/Region."
 
 Conditions:
   EnablePrometheus: !Or
@@ -676,6 +683,7 @@ Resources:
         KubernetesVersion: !If [VaultEnabled, '1.17', !Ref 'AWS::NoValue']
         ConsulUIAccessCIDR: !Ref RemoteAccessCIDR
         VaultUIAccessCIDR: !Ref RemoteAccessCIDR
+        CustomAmiId: !Ref CustomAmiId
 
   #Hardcoded Parameters values to ensure we're always using the AWS pre-packaged dependencies for functions
   AutoDetectSharedResources:
