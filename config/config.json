@@ -6,7 +6,7 @@
     "QSS3BucketName":"eks-gitops",
     "EKSPublicAccessEndpoint":"Enabled",
     "EfsStorageClass":"Enabled",
-    "ProvisionBastionHost" : "Enabled",
+    "ProvisionBastionHost" : "Disabled",
     "PrometheusIntegration":"Enabled",
     "ProvisionMetricsServer" : "Enabled",
     "GrafanaIntegration" : "Enabled",

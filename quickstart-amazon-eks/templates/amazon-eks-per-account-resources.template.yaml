@@ -569,7 +569,8 @@ Resources:
         - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly'
         - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonElasticFileSystemReadOnlyAccess'
 
-  #Modification: Added AmazonSSMManagedInstanceCore to node instance role policy
+  #Modification: Added AmazonSSMManagedInstanceCore to node instance role policy.
+  #Allows using SSM Connect instead of ssh via bastion host
   ManagedNodeInstanceRole:
     Type: AWS::IAM::Role
     Metadata:
