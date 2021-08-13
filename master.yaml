@@ -670,7 +670,9 @@ Conditions:
   UsingDefaultBucket: !Equals [!Ref QSS3BucketName, 'aws-quickstart']
   WindowsNodes: !Equals [!Ref NodeGroupOS, 'Windows']
   VaultEnabled: !Equals [!Ref VaultIntegration, 'Enabled']
-  JenkinsEnabled: !Equals [!Ref EnableJenkins, 'Enabled']
+  JenkinsEnabled: !And
+    - !Equals [!Ref EnableJenkins, 'Enabled']
+    - !Not [!Equals [!Ref QSS3BucketName, ""]]
 
 Mappings:
   Config:
@@ -855,10 +857,10 @@ Resources:
     Condition: JenkinsEnabled
     Properties:
       TemplateURL: !Sub
-        - 'https://${S3Bucket}.s3.${S3Region}.${AWS::URLSuffix}/templates/jenkins.template.yaml'
+        - 'https://${QSS3BucketName}.s3.${S3Region}.${AWS::URLSuffix}/templates/jenkins.template.yaml'
         - S3Region: !If [ UsingDefaultBucket, !Ref 'AWS::Region', !Ref QSS3BucketRegion ]
-          S3Bucket: !If [ UsingDefaultBucket, !Sub 'AWS::NoValue', !Ref QSS3BucketName ]
-      EKSClusterName: !GetAtt EKSStack.Outputs.EKSClusterName
+      Parameters:
+        EksClusterName: !GetAtt EKSStack.Outputs.EKSClusterName
 
 
 Outputs:
