@@ -6,11 +6,26 @@ Metadata:
 Parameters:
   EksClusterName:
     Type: String
-
+  Namespace:
+    Type: String
+    Default: jenkins
+    Description: (Optional) Kubernetes namespace to deploy Jenkins into.
 Resources:
+
+  JenkinsNamespace:
+    Type: "AWSQS::Kubernetes::Resource"
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: 'kube-system'
+      Manifest: !Sub |
+        kind: Namespace
+        apiVersion: v1
+        metadata:
+          name: ${Namespace}
 
   JenkinsServiceAccount:
     Type: "AWSQS::Kubernetes::Resource"
+    DependsOn: JenkinsNamespace
     Properties:
       ClusterName: !Ref EksClusterName
       Namespace: jenkins
@@ -20,8 +35,6 @@ Resources:
         metadata:
           labels:
             app.kubernetes.io/name: jenkins
-          annotations:
-            eks.amazonaws.com/role-arn: ${LoadBalancerControllerIAMRole.Arn}
           name: jenkins
 
   JenkinsHelmChart:
@@ -30,17 +43,9 @@ Resources:
     Metadata: { cfn-lint: { config: { ignore_checks: [ E3012 ] } } }
     Properties:
       ClusterID: !Ref EksClusterName
-      Namespace: jenkins
+      Namespace: !Ref Namespace
       Repository: https://charts.jenkins.io
-      Chart: aws-load-balancer-controller
-      Version: 1.2.3
-      Values:
-        clusterName: !Ref EksClusterName
-        serviceAccount.create: false
-        serviceAccount.name: aws-load-balancer-controller
-        region: !Sub '${AWS::Region}'
-        image.repository: !FindInMap [RegionMap, !Ref "AWS::Region", lbrepo]
-        vpcId: !Ref VpcId
+      Chart: stable/jenkins
       ValueYaml: |
         controller:
           # Used for label app.kubernetes.io/component
@@ -81,5 +86,5 @@ Resources:
           name: "jenkins"
 
 Outputs:
-  LoadBalancerControllerHelmChart:
+  JenkinsHelmChart:
     Value: !Ref JenkinsHelmChart

@@ -852,7 +852,7 @@ Resources:
 
 #Does not work with default bucket as this is a custom template.
 #TODO add new condition based on QSS3BucketRegion to stop template from deploying if using default bucket
-  Jenkins:
+  JenkinsStack:
     Type: AWS::CloudFormation::Stack
     Condition: JenkinsEnabled
     Properties:
