@@ -97,6 +97,7 @@ Metadata:
           - AdditionalEKSAdminRoleArn
           - FargateNamespaces
           - FargateLabels
+          - EnableJenkins
       - Label:
           default: Default EKS node group configuration
         Parameters:
@@ -296,6 +297,8 @@ Metadata:
         default: Grafana integration
       CustomAmiId:
         default: Custom AMI ID
+      EnableJenkins:
+        default: Enable Jenkins
 Parameters:
   AvailabilityZones:
     Description: List of Availability Zones to use for the subnets in the VPC. Three
@@ -637,6 +640,11 @@ Parameters:
     Type: String
     Default: ""
     Description: "(Optional) If an AMI ID is specified, it is used instead of the AMI from your OS/Region."
+  EnableJenkins:
+    Type: String
+    Default: Disabled
+    AllowedValues: [Enabled, Disabled]
+    Description: "Deploy latest version of Jenkins to cluster"
 
 Conditions:
   EnablePrometheus: !Or
@@ -662,6 +670,7 @@ Conditions:
   UsingDefaultBucket: !Equals [!Ref QSS3BucketName, 'aws-quickstart']
   WindowsNodes: !Equals [!Ref NodeGroupOS, 'Windows']
   VaultEnabled: !Equals [!Ref VaultIntegration, 'Enabled']
+  JenkinsEnabled: !Equals [!Ref EnableJenkins, 'Enabled']
 
 Mappings:
   Config:
@@ -838,6 +847,18 @@ Resources:
         RafaySysOrganizationName: !Ref RafaySysOrganizationName
         RafaySysEmail: !Ref RafaySysEmail
         ProvisionMetricsServer: !If [EnableMetricsServer, 'Enabled', 'Disabled']
+
+#Does not work with default bucket as this is a custom template.
+#TODO add new condition based on QSS3BucketRegion to stop template from deploying if using default bucket
+  Jenkins:
+    Type: AWS::CloudFormation::Stack
+    Condition: JenkinsEnabled
+    Properties:
+      TemplateURL: !Sub
+        - 'https://${S3Bucket}.s3.${S3Region}.${AWS::URLSuffix}/templates/jenkins.template.yaml'
+        - S3Region: !If [ UsingDefaultBucket, !Ref 'AWS::Region', !Ref QSS3BucketRegion ]
+          S3Bucket: !If [ UsingDefaultBucket, !Sub 'AWS::NoValue', !Ref QSS3BucketName ]
+      EKSClusterName: !GetAtt EKSStack.Outputs.EKSClusterName
 
 
 Outputs:

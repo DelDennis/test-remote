@@ -17,6 +17,7 @@
     "NodeInstanceType" : "t3.large",
     "AdditionalEKSAdminUserArn" : "arn:aws:iam::518899565528:user/homecli",
     "CalicoIntegration" : "Disabled",
-    "CustomAmiId" : "ami-0eb9bfb457fec38d0"
+    "CustomAmiId" : "ami-0eb9bfb457fec38d0",
+    "EnableJenkins": "Enabled"
   }
 }

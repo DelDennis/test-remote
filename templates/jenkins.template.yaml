@@ -1,0 +1,85 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Deploys Jenkins to an existing kubernetes cluster"
+Metadata:
+  QSLint:
+    Exclusions: [W9002, W9003, W9004, W9006]
+Parameters:
+  EksClusterName:
+    Type: String
+
+Resources:
+
+  JenkinsServiceAccount:
+    Type: "AWSQS::Kubernetes::Resource"
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: jenkins
+      Manifest: !Sub |
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+          labels:
+            app.kubernetes.io/name: jenkins
+          annotations:
+            eks.amazonaws.com/role-arn: ${LoadBalancerControllerIAMRole.Arn}
+          name: jenkins
+
+  JenkinsHelmChart:
+    Type: "AWSQS::Kubernetes::Helm"
+    DependsOn: JenkinsServiceAccount
+    Metadata: { cfn-lint: { config: { ignore_checks: [ E3012 ] } } }
+    Properties:
+      ClusterID: !Ref EksClusterName
+      Namespace: jenkins
+      Repository: https://charts.jenkins.io
+      Chart: aws-load-balancer-controller
+      Version: 1.2.3
+      Values:
+        clusterName: !Ref EksClusterName
+        serviceAccount.create: false
+        serviceAccount.name: aws-load-balancer-controller
+        region: !Sub '${AWS::Region}'
+        image.repository: !FindInMap [RegionMap, !Ref "AWS::Region", lbrepo]
+        vpcId: !Ref VpcId
+      ValueYaml: |
+        controller:
+          # Used for label app.kubernetes.io/component
+          componentName: "jenkins-controller"
+          image: "jenkins/jenkins"
+          tag: "2.289.2-lts-jdk11"
+          additionalPlugins:
+            - aws-codecommit-jobs:0.3.0
+            - aws-java-sdk:1.11.995
+            - junit:1.51
+            - ace-editor:1.1
+            - workflow-support:3.8
+            - pipeline-model-api:1.8.5
+            - pipeline-model-definition:1.8.5
+            - pipeline-model-extensions:1.8.5
+            - workflow-job:2.41
+            - credentials-binding:1.26
+            - aws-credentials:1.29
+            - credentials:2.5
+            - lockable-resources:2.11
+            - branch-api:2.6.4
+          resources:
+            requests:
+              cpu: "1024m"
+              memory: "4Gi"
+            limits:
+              cpu: "4096m"
+              memory: "8Gi"
+          javaOpts: "-Xms4000m -Xmx4000m"
+          servicePort: 80
+          serviceType: LoadBalancer
+        agent:
+          Enabled: false
+        rbac:
+          create: true
+        serviceAccount:
+          create: false
+          name: "jenkins"
+
+Outputs:
+  LoadBalancerControllerHelmChart:
+    Value: !Ref JenkinsHelmChart
