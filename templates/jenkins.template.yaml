@@ -28,7 +28,7 @@ Resources:
     DependsOn: JenkinsNamespace
     Properties:
       ClusterName: !Ref EksClusterName
-      Namespace: jenkins
+      Namespace: ${Namespace}
       Manifest: !Sub |
         apiVersion: v1
         kind: ServiceAccount

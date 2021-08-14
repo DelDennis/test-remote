@@ -1,0 +1,162 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Deploys fluent-bit to an existing kubernetes cluster and routes logs to ElasticSearch"
+Metadata:
+  QSLint:
+    Exclusions: [W9002, W9003, W9004, W9006]
+Parameters:
+  EksClusterName:
+    Type: String
+  Namespace:
+    Type: String
+    Default: fluentbit
+    Description: (Optional) Kubernetes namespace to deploy FluentBit into.
+  DomainName:
+    Description: User-defined Elasticsearch domain name
+    Type: String
+  ElasticsearchVersion:
+    Description: User-defined Elasticsearch version
+    Type: String
+  InstanceType:
+    Type: String
+  AvailabilityZone:
+    Type: String
+  CidrBlock:
+    Type: String
+  GroupDescription:
+    Type: String
+  SGName:
+    Type: String
+
+Resources:
+  ElasticsearchDomain:
+    Type: 'AWS::Elasticsearch::Domain'
+    Properties:
+      DomainName:
+        Ref: DomainName
+      ElasticsearchVersion:
+        Ref: ElasticsearchVersion
+      ElasticsearchClusterConfig:
+        InstanceCount: '1'
+        InstanceType:
+          Ref: InstanceType
+      EBSOptions:
+        EBSEnabled: true
+        Iops: '0'
+        VolumeSize: '10'
+        VolumeType: 'standard'
+      AccessPolicies:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Deny
+            Principal:
+              AWS: '*'
+            Action: 'es:*'
+            Resource: '*'
+      AdvancedOptions:
+        rest.action.multi.allow_explicit_index: true
+      DomainEndpointOptions:
+        EnforceHTTPS: True
+      LogPublishingOptions:
+        AUDIT_LOGS:
+          Enabled: False
+      Tags:
+        - Key: foo
+          Value: bar
+      VPCOptions:
+        SubnetIds:
+          - Ref: subnet
+        SecurityGroupIds:
+          - Ref: mySecurityGroup
+
+  FluentBitNamespace:
+    Type: "AWSQS::Kubernetes::Resource"
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: 'kube-system'
+      Manifest: !Sub |
+        kind: Namespace
+        apiVersion: v1
+        metadata:
+          name: ${Namespace}
+
+  FluentBitServiceAccount:
+    Type: "AWSQS::Kubernetes::Resource"
+    DependsOn: FluentBitNamespace
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: !Ref Namespace
+      Manifest: !Sub |
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+          labels:
+            app.kubernetes.io/name: fluentbit
+          name: fluentbit
+
+  AWSFluentBitHelmChart:
+    Type: "AWSQS::Kubernetes::Helm"
+    DependsOn: FluentBitServiceAccount
+    Metadata: { cfn-lint: { config: { ignore_checks: [ E3012 ] } } }
+    Properties:
+      ClusterID: !Ref EksClusterName
+      Namespace: !Ref Namespace
+      Repository: https://aws.github.io/eks-charts
+      Chart: eks/aws-for-fluent-bit
+      ValueYaml: |
+        controller:
+          # Used for label app.kubernetes.io/component
+          componentName: "jenkins-controller"
+          image: "jenkins/jenkins"
+          tag: "2.289.2-lts-jdk11"
+          additionalPlugins:
+            - aws-codecommit-jobs:0.3.0
+            - aws-java-sdk:1.11.995
+            - junit:1.51
+            - ace-editor:1.1
+            - workflow-support:3.8
+            - pipeline-model-api:1.8.5
+            - pipeline-model-definition:1.8.5
+            - pipeline-model-extensions:1.8.5
+            - workflow-job:2.41
+            - credentials-binding:1.26
+            - aws-credentials:1.29
+            - credentials:2.5
+            - lockable-resources:2.11
+            - branch-api:2.6.4
+          resources:
+            requests:
+              cpu: "1024m"
+              memory: "4Gi"
+            limits:
+              cpu: "4096m"
+              memory: "8Gi"
+          javaOpts: "-Xms4000m -Xmx4000m"
+          servicePort: 80
+          serviceType: LoadBalancer
+        agent:
+          Enabled: false
+        rbac:
+          create: true
+        serviceAccount:
+          create: false
+          name: "jenkins"
+
+Outputs:
+  JenkinsHelmChart:
+    Value: !Ref JenkinsHelmChart
+  DomainArn:
+    Value:
+      'Fn::GetAtt':
+        - ElasticsearchDomain
+        - DomainArn
+    DomainEndpoint:
+      Value:
+        'Fn::GetAtt':
+          - ElasticsearchDomain
+          - DomainEndpoint
+    SecurityGroupId:
+      Value:
+        Ref: mySecurityGroup
+    SubnetId:
+      Value:
+        Ref: subnet
