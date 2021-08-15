@@ -1,8 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: "Deploys Jenkins to an existing kubernetes cluster"
-Metadata:
-  QSLint:
-    Exclusions: [W9002, W9003, W9004, W9006]
+
 Parameters:
   EksClusterName:
     Type: String
@@ -16,7 +14,7 @@ Resources:
     Type: "AWSQS::Kubernetes::Resource"
     Properties:
       ClusterName: !Ref EksClusterName
-      Namespace: 'kube-system'
+      Namespace: !Ref Namespace
       Manifest: !Sub |
         kind: Namespace
         apiVersion: v1
@@ -28,7 +26,7 @@ Resources:
     DependsOn: JenkinsNamespace
     Properties:
       ClusterName: !Ref EksClusterName
-      Namespace: ${Namespace}
+      Namespace: !Ref Namespace
       Manifest: !Sub |
         apiVersion: v1
         kind: ServiceAccount
@@ -40,7 +38,6 @@ Resources:
   JenkinsHelmChart:
     Type: "AWSQS::Kubernetes::Helm"
     DependsOn: JenkinsServiceAccount
-    Metadata: { cfn-lint: { config: { ignore_checks: [ E3012 ] } } }
     Properties:
       ClusterID: !Ref EksClusterName
       Namespace: !Ref Namespace

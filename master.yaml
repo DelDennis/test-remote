@@ -855,6 +855,7 @@ Resources:
   JenkinsStack:
     Type: AWS::CloudFormation::Stack
     Condition: JenkinsEnabled
+    DependsOn: EKSStack
     Properties:
       TemplateURL: !Sub
         - 'https://${QSS3BucketName}.s3.${S3Region}.${AWS::URLSuffix}/templates/jenkins.template.yaml'
@@ -862,25 +863,16 @@ Resources:
       Parameters:
         EksClusterName: !GetAtt EKSStack.Outputs.EKSClusterName
 
-  FluentBit:
+  EFSStack:
     Type: AWS::CloudFormation::Stack
-    Condition: JenkinsEnabled
     Properties:
       TemplateURL: !Sub
-        - 'https://${QSS3BucketName}.s3.${S3Region}.${AWS::URLSuffix}/templates/jenkins.template.yaml'
+        - 'https://${QSS3BucketName}.s3.${S3Region}.${AWS::URLSuffix}/templates/es-fluentbit-firehose.template.yaml'
         - S3Region: !If [ UsingDefaultBucket, !Ref 'AWS::Region', !Ref QSS3BucketRegion ]
       Parameters:
         EksClusterName: !GetAtt EKSStack.Outputs.EKSClusterName
+        OIDCIssuerURL: !Join [ '', !Split [ 'https://', !GetAtt EKSStack.Outputs.OIDCIssuerURL ] ]
 
-  ElasticSearch:
-    Type: AWS::CloudFormation::Stack
-    Condition: JenkinsEnabled
-    Properties:
-      TemplateURL: !Sub
-        - 'https://${QSS3BucketName}.s3.${S3Region}.${AWS::URLSuffix}/templates/jenkins.template.yaml'
-        - S3Region: !If [ UsingDefaultBucket, !Ref 'AWS::Region', !Ref QSS3BucketRegion ]
-      Parameters:
-        EksClusterName: !GetAtt EKSStack.Outputs.EKSClusterName
 
 
 Outputs:
