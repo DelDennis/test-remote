@@ -873,7 +873,14 @@ Resources:
         EksClusterName: !GetAtt EKSStack.Outputs.EKSClusterName
         OIDCIssuerURL: !Join [ '', !Split [ 'https://', !GetAtt EKSStack.Outputs.OIDCIssuerURL ] ]
 
-
+  SpinnakerStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub
+        - 'https://${QSS3BucketName}.s3.${S3Region}.${AWS::URLSuffix}/templates/spinnaker.template.yaml'
+        - S3Region: !If [ UsingDefaultBucket, !Ref 'AWS::Region', !Ref QSS3BucketRegion ]
+      Parameters:
+        EksClusterName: !GetAtt EKSStack.Outputs.EKSClusterName
 
 Outputs:
   EKSClusterName:

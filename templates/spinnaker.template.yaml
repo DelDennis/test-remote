@@ -1,0 +1,50 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Deploys Spinnaker to an existing kubernetes cluster"
+
+Parameters:
+  EksClusterName:
+    Type: String
+  Namespace:
+    Type: String
+    Default: spinnaker
+    Description: (Optional) Kubernetes namespace to deploy Spinnaker.
+Resources:
+
+  SpinnakerNamespace:
+    Type: "AWSQS::Kubernetes::Resource"
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: !Ref Namespace
+      Manifest: !Sub |
+        kind: Namespace
+        apiVersion: v1
+        metadata:
+          name: ${Namespace}
+
+#  SpinnakerServiceAccount:
+#    Type: "AWSQS::Kubernetes::Resource"
+#    DependsOn: SpinnakerNamespace
+#    Properties:
+#      ClusterName: !Ref EksClusterName
+#      Namespace: !Ref Namespace
+#      Manifest: !Sub |
+#        apiVersion: v1
+#        kind: ServiceAccount
+#        metadata:
+#          labels:
+#            app.kubernetes.io/name: spinnaker
+#          name: spinnaker
+
+  SpinnakerHelmChart:
+    Type: "AWSQS::Kubernetes::Helm"
+#    DependsOn: SpinnakerServiceAccount
+    Properties:
+      ClusterID: !Ref EksClusterName
+      Namespace: !Ref Namespace
+      Repository: 'https://armory.jfrog.io/artifactory/charts/'
+      Chart: 'armory/armory-spinnaker-operator'
+
+
+Outputs:
+  JenkinsHelmChart:
+    Value: !Ref SpinnakerHelmChart
