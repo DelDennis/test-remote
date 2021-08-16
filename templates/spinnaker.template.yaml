@@ -43,6 +43,8 @@ Resources:
       Namespace: !Ref Namespace
       Repository: 'https://armory.jfrog.io/artifactory/charts/'
       Chart: 'armory/armory-spinnaker-operator'
+      Values:
+        spinnakerService.enabled: true
 
 
 Outputs:
