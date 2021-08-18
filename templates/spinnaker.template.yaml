@@ -4,17 +4,28 @@ Description: "Deploys Spinnaker to an existing kubernetes cluster"
 Parameters:
   EksClusterName:
     Type: String
-  Namespace:
+  SpinnakerVersion:
     Type: String
-    Default: spinnaker
-    Description: (Optional) Kubernetes namespace to deploy Spinnaker.
+  OperatorNamespace:
+    Type: String
+    Default: spinnaker-operator
+    Description: Kubernetes namespace to deploy Spinnaker operator.
+  GitHubUser:
+    Type: String
+    Description: GitHub username or organization
+    MinLength: 3
+    MaxLength: 100
+    ConstraintDescription: You must enter a GitHub username or organization
+  GitHubTokenSecretsManager:
+    NoEcho: true
+    Type: String
+    Default: '{{resolve:secretsmanager:/spinnaker/githubtoken:SecretString:GHToken}}'
+    Description: GitHub Token. Must be defined in AWS Secrets Manager. https://github.com/settings/tokens
+  ECRName:
+    Type: String
+    Default: 'spinnaker'
+    Description: Name to be used for ECR repo.
 
-  GithubUser: ${GithubUser}
-  GithubToken: ${GithubToken}
-#  ECR Repository:x
-#    Type: String
-#  EksClusterName:
-#    Type: String
 #  CreateSpinnakerUser:
 #    Type: String
 #    Allowedvalues: ['Enabled','Disabled']
@@ -23,24 +34,23 @@ Parameters:
 
 Resources:
   SpinnakerUser:
+    Type: AWS::IAM::User
     Description: User identity Spinnaker uses to create AWS resources
     Properties:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/PowerUserAccess
-    Type: AWS::IAM::User
-    Condition: CreateAccessKeys
+
   SpinnakerAccessKey:
     DependsOn: SpinnakerUser
-    Condition: CreateAccessKeys
+    Type: AWS::IAM::AccessKey
     Description: Generate AccessKey for Spinnaker
     Properties:
-      UserName: !Ref "SpinnakerUser"
-    Type: AWS::IAM::AccessKey
+      UserName: !Ref SpinnakerUser
+
   SpinnakerAccessKeyCredentials:
     DependsOn: SpinnakerAccessKey
-    Condition: CreateAccessKeys
-    Description: Store the access key credentials for Spinnaker in a secure location
     Type: AWS::SecretsManager::Secret
+    Description: Store the access key credentials for Spinnaker in a secure location
     Properties:
       Description: Spinnaker user access key credentials
       SecretString: !Sub |
@@ -49,40 +59,97 @@ Resources:
           "SecretAccessKey":"${SpinnakerAccessKey.SecretAccessKey}"
         }
 
-  SpinnakerBucket:
+  SpinnakerRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref ECRName
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: 'AES256'
+      ImageTagMutability: 'IMMUTABLE'
 
-  SpinnakerNamespace:
+  SpinnakerBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'spinnaker-bucket${AWS::Region}-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'AES256'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  SpinnakerOperatorNamespace:
     Type: "AWSQS::Kubernetes::Resource"
     Properties:
       ClusterName: !Ref EksClusterName
-      Namespace: !Ref Namespace
+      Namespace: 'kube-system'
       Manifest: !Sub |
         kind: Namespace
         apiVersion: v1
         metadata:
-          name: ${Namespace}
+          name: ${OperatorNamespace}
+
+  SpinnakerHelmChart:
+    Type: "AWSQS::Kubernetes::Helm"
+    #    DependsOn: SpinnakerServiceAccount
+    Properties:
+      ClusterID: !Ref EksClusterName
+      Namespace: !Ref OperatorNamespace
+      Repository: 'https://armory.jfrog.io/artifactory/charts/'
+      Chart: 'armory/armory-spinnaker-operator'
+      Values:
+        spinnakerService.enabled: true
+
+  TokenRefreshConfigmap:
+    Type: "AWSQS::Kubernetes::Resource"
+    DependsOn: SpinnakerOperatorNamespace
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: spinnaker   #note that this namespace differs from the operator namespace. this is the service ns.
+      Manifest: !Sub |
+        apiVersion: v1
+        data:
+          config.yaml: |
+            interval: 30m # defines refresh interval
+            registries: # list of registries to refresh
+              - registryId: "${AWS::AccountId}"
+                region: "${AWS::Region}"
+                passwordFile: "/etc/passwords/my-ecr-registry.pass"
+        kind: ConfigMap
+        metadata:
+          name: token-refresh-config
+          namespace: spinnaker
+
 
   SpinnakerServiceAccount:
     Type: "AWSQS::Kubernetes::Resource"
-    DependsOn: SpinnakerNamespace
+    DependsOn: SpinnakerOperatorNamespace
     Properties:
       ClusterName: !Ref EksClusterName
-      Namespace: !Ref Namespace
+      Namespace: !Ref OperatorNamespace
       Manifest: !Sub |
         apiVersion: spinnaker.io/v1alpha2
         kind: SpinnakerService
         metadata:
           name: spinnaker
+          namespace: spinnaker
         spec:
           spinnakerConfig:
             config:
-              version: $SPINNAKER_VERSION   # the version of Spinnaker to be deployed
+              version: ${SpinnakerVersion}   # the version of Spinnaker to be deployed
               persistentStorage:
                 persistentStoreType: s3
                 s3:
-                  bucket: ${SpinnakerBucket}
+                  bucket: spinnaker-bucket${AWS::Region}-${AWS::AccountId}
                   rootFolder: front50
-                  region: $AWS_REGION
+                  region: ${AWS::Region}
                   accessKeyId: ${SpinnakerAccessKey}
                   secretAccessKey: ${SpinnakerAccessKey.SecretAccessKey}
               deploymentEnvironment:
@@ -101,7 +168,7 @@ Resources:
                   enabled: true
                   accounts:
                   - name: ${GithubUser}
-                    token: ${GithubToken} # GitHub's personal access token. This fields supports `encrypted` references to secrets.
+                    token: ${GitHubTokenSecretsManager} # GitHub's personal access token. This fields supports `encrypted` references to secrets.
               providers:
                   dockerRegistry:
                     enabled: true
@@ -133,12 +200,12 @@ Resources:
                     primaryAccount: my-ecr-registry
                     accounts:
                     - name: my-ecr-registry
-                      address: https://$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+                      address: ${SpinnakerRepository.RepositoryUri}
                       username: AWS
                       passwordFile: /etc/passwords/my-ecr-registry.pass
                       trackDigests: true
                       repositories:
-                      - $ECR_REPOSITORY
+                      - ${ECRName}
                 igor:
                   docker-registry:
                     enabled: true
@@ -151,18 +218,5 @@ Resources:
             service:
               type: LoadBalancer
 
-  SpinnakerHelmChart:
-    Type: "AWSQS::Kubernetes::Helm"
-#    DependsOn: SpinnakerServiceAccount
-    Properties:
-      ClusterID: !Ref EksClusterName
-      Namespace: !Ref Namespace
-      Repository: 'https://armory.jfrog.io/artifactory/charts/'
-      Chart: 'armory/armory-spinnaker-operator'
-      Values:
-        spinnakerService.enabled: true
-
 
 Outputs:
-  JenkinsHelmChart:
-    Value: !Ref SpinnakerHelmChart
