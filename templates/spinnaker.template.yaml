@@ -6,16 +6,18 @@ Parameters:
     Type: String
   SpinnakerVersion:
     Type: String
+    Default: '2.26.1'
   OperatorNamespace:
     Type: String
-    Default: spinnaker-operator
+    Default: 'spinnaker-operator'
     Description: Kubernetes namespace to deploy Spinnaker operator.
+  ServiceNamespace:
+    Type: String
+    Default: 'spinnaker-service'
+    Description: Kubernetes namespace where the operator will deploy the service.
   GitHubUser:
     Type: String
     Description: GitHub username or organization
-    MinLength: 3
-    MaxLength: 100
-    ConstraintDescription: You must enter a GitHub username or organization
   GitHubTokenSecretsManager:
     NoEcho: true
     Type: String
@@ -25,6 +27,9 @@ Parameters:
     Type: String
     Default: 'spinnaker'
     Description: Name to be used for ECR repo.
+  ServiceAccountName:
+    Type: String
+    Default: 'spinnaker-service-account'
 
 #  CreateSpinnakerUser:
 #    Type: String
@@ -32,10 +37,15 @@ Parameters:
 #    Default: 'Disabled'
 #    Description: 'This is required to deploy Spinnaker but we default to disabled to force awareness of IAM user creation'
 
+Mappings:
+  Config:
+    Prefix: { Value: 'eks-quickstart' }
+
+#Depending on how you are using spinnaker this could be locked down to just s3 permissions.
 Resources:
   SpinnakerUser:
     Type: AWS::IAM::User
-    Description: User identity Spinnaker uses to create AWS resources
+    Description: User identity Spinnaker uses to manage AWS resources
     Properties:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/PowerUserAccess
@@ -58,6 +68,124 @@ Resources:
           "AccessKeyId":"${SpinnakerAccessKey}",
           "SecretAccessKey":"${SpinnakerAccessKey.SecretAccessKey}"
         }
+
+  SpinnakerOperatorNamespace:
+    Type: "AWSQS::Kubernetes::Resource"
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: ${OperatorNamespace}
+      Manifest: !Sub |
+        kind: Namespace
+        apiVersion: v1
+        metadata:
+          name: ${OperatorNamespace}
+
+  SpinnakerServiceNamespace:
+    Type: "AWSQS::Kubernetes::Resource"
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: ${ServiceNamespace}
+      Manifest: !Sub |
+        kind: Namespace
+        apiVersion: v1
+        metadata:
+          name: ${ServiceNamespace}
+
+  SpinnakerServiceAccount:
+    Type: "AWSQS::Kubernetes::Resource"
+    DependsOn: SpinnakerServiceNamespace
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: !Ref ServiceNamespace
+      Manifest: !Sub |
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+          name: ${ServiceAccountName}
+          namespace: ${ServiceNamespace}
+
+  ServiceClusterRoleBinding:
+    Type: "AWSQS::Kubernetes::Resource"
+    DependsOn: [SpinnakerServiceAccount, SpinnakerServiceNamespace]
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: !Ref ServiceNamespace
+      Manifest: !Sub |
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: ClusterRoleBinding
+        metadata:
+          name: spinnaker-admin
+        subjects:
+          - kind: ServiceAccount
+            name: ${ServiceAccountName}
+            namespace: ${ServiceNamespace}
+        roleRef:
+          kind: ClusterRole
+          name: cluster-admin
+          apiGroup: rbac.authorization.k8s.io
+
+  ClusterEndpoint:
+    Type: Custom::CliQuery
+    Properties:
+      ServiceToken: !Sub [ 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${Prefix}-ResourceReader', { Prefix: !FindInMap [ Config, Prefix, Value ] } ]
+      AwsCliCommand: !Sub "eks describe-cluster --name ${EksClusterName} --query '{Endpoint: cluster.endpoint, CaData: cluster.certificateAuthority.data}'"
+      IdField: 'Endpoint'
+
+  KubeconfigCreator:
+    Type: "AWSQS::Kubernetes::Resource"
+    DependsOn: [ServiceClusterRoleBinding, SpinnakerServiceAccount, ClusterEndpoint]
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: !Ref ServiceNamespace
+      Manifest: !Sub |
+        apiVersion: batch/v1
+        kind: Job
+        metadata:
+          name: spinnaker-config-generator
+        spec:
+          backoffLimit: 4
+          template:
+            spec:
+              serviceAccountName: ${ServiceAccountName}
+              containers:
+              - name: spinnaker-config-generator
+                image: widerin/eks-helmsman:latest
+                command: ["/bin/bash","-c"]
+                args:
+                  - >
+                    set -o errexit
+
+                    secretName=$(kubectl --namespace ${ServiceNamespace} get serviceAccount ${ServiceAccountName} -o jsonpath='{.secrets[0].name}');
+                    token=$(kubectl --namespace ${ServiceNamespace} get secret/$secretName -o jsonpath='{.data.token}' | base64 -d);
+
+                    kubectl config set-cluster k8s --server=${ClusterEndpoint} \
+                        --certificate-authority=/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+                        --embed-certs=true;
+                    kubectl config set-credentials spinnaker --token=$token;
+                    kubectl config set-context k8s --cluster k8s --user spinnaker;
+                    kubectl config use-context k8s;
+                    kubectl config view --flatten > /tmp/config;
+                    kubectl -n ${ServiceNamespace} create secret generic spin-kconfig \
+                        --from-file=/tmp/config;
+                    sleep 3s;
+              restartPolicy: Never
+
+
+  #Our token refresh sidecar will use instance credentials to update token for the Clouddriver container
+  NodegroupECRTokenRefreshPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: ecr-token-refresh-policy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - ecr:GetAuthorizationToken
+            Resource: "*"
+      Roles:
+        - !Sub [ '${Prefix}-ManagedNodeInstance', { Prefix: !FindInMap [ Config, Prefix, Value ] } ]
+        - !Sub [ '${Prefix}-UnManagedNodeInstance', { Prefix: !FindInMap [ Config, Prefix, Value ] } ]
 
   SpinnakerRepository:
     Type: AWS::ECR::Repository
@@ -85,34 +213,25 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
 
-  SpinnakerOperatorNamespace:
-    Type: "AWSQS::Kubernetes::Resource"
-    Properties:
-      ClusterName: !Ref EksClusterName
-      Namespace: 'kube-system'
-      Manifest: !Sub |
-        kind: Namespace
-        apiVersion: v1
-        metadata:
-          name: ${OperatorNamespace}
 
-  SpinnakerHelmChart:
+#Chart values are omitted as defaults are fine and meant to be production ready. Will use default values.yaml.
+#View here --> https://artifacthub.io/packages/helm/armory/armory-spinnaker-operator
+  SpinnakerOperatorHelmChart:
     Type: "AWSQS::Kubernetes::Helm"
-    #    DependsOn: SpinnakerServiceAccount
+    DependsOn: SpinnakerOperatorNamespace
     Properties:
       ClusterID: !Ref EksClusterName
       Namespace: !Ref OperatorNamespace
       Repository: 'https://armory.jfrog.io/artifactory/charts/'
       Chart: 'armory/armory-spinnaker-operator'
-      Values:
-        spinnakerService.enabled: true
+
 
   TokenRefreshConfigmap:
     Type: "AWSQS::Kubernetes::Resource"
-    DependsOn: SpinnakerOperatorNamespace
+    DependsOn: SpinnakerServiceNamespace
     Properties:
       ClusterName: !Ref EksClusterName
-      Namespace: spinnaker   #note that this namespace differs from the operator namespace. this is the service ns.
+      Namespace: !Ref ServiceNamespace   #note that this namespace differs from the operator namespace. this is the service ns.
       Manifest: !Sub |
         apiVersion: v1
         data:
@@ -121,29 +240,34 @@ Resources:
             registries: # list of registries to refresh
               - registryId: "${AWS::AccountId}"
                 region: "${AWS::Region}"
-                passwordFile: "/etc/passwords/my-ecr-registry.pass"
+                passwordFile: "/etc/passwords/eks-registry.pass"
         kind: ConfigMap
         metadata:
           name: token-refresh-config
-          namespace: spinnaker
+          namespace: ${ServiceNamespace}
 
-
-  SpinnakerServiceAccount:
+  SpinnakerService:
     Type: "AWSQS::Kubernetes::Resource"
-    DependsOn: SpinnakerOperatorNamespace
+    DependsOn:
+      - SpinnakerServiceNamespace
+      - SpinnakerOperatorHelmChart
+      - SpinnakerRepository
+      - SpinnakerBucket
+      - SpinnakerAccessKeyCredentials
+      - TokenRefreshConfigmap
+      - KubeconfigCreator
     Properties:
       ClusterName: !Ref EksClusterName
-      Namespace: !Ref OperatorNamespace
+      Namespace: !Ref ServiceNamespace
       Manifest: !Sub |
-        apiVersion: spinnaker.io/v1alpha2
+        apiVersion: spinnaker.armory.io/v1alpha2
         kind: SpinnakerService
         metadata:
-          name: spinnaker
-          namespace: spinnaker
+          name: spinnaker-test
         spec:
           spinnakerConfig:
             config:
-              version: ${SpinnakerVersion}   # the version of Spinnaker to be deployed
+              version: ${SpinnakerVersion}
               persistentStorage:
                 persistentStoreType: s3
                 s3:
@@ -152,6 +276,7 @@ Resources:
                   region: ${AWS::Region}
                   accessKeyId: ${SpinnakerAccessKey}
                   secretAccessKey: ${SpinnakerAccessKey.SecretAccessKey}
+                  serverSideEncryption: AES256
               deploymentEnvironment:
                 sidecars:
                   spin-clouddriver:
@@ -167,23 +292,23 @@ Resources:
                 github:
                   enabled: true
                   accounts:
-                  - name: ${GithubUser}
-                    token: ${GitHubTokenSecretsManager} # GitHub's personal access token. This fields supports `encrypted` references to secrets.
+                  - name: ${GitHubUser}
+                    token: ${GitHubTokenSecretsManager}
               providers:
                   dockerRegistry:
                     enabled: true
                   kubernetes:
                     enabled: true
                     accounts:
-                    - name: spinnaker-workshop
+                    - name: ${EksClusterName}
                       requiredGroupMembership: []
                       providerVersion: V2
                       permissions:
                       dockerRegistries:
-                        - accountName: my-ecr-registry
+                        - accountName: eks-registry
                       configureImagePullSecrets: true
                       cacheThreads: 1
-                      namespaces: [spinnaker,detail]
+                      namespaces: []
                       omitNamespaces: []
                       kinds: []
                       omitKinds: []
@@ -191,32 +316,26 @@ Resources:
                       cachingPolicies: []
                       oAuthScopes: []
                       onlySpinnakerManaged: false
-                      kubeconfigFile: kubeconfig-sp  # File name must match "files" key
-                    primaryAccount: spinnaker-workshop  # Change to a desired account from the accounts array
+                      kubeconfigFile: encryptedFile:k8s!n:spin-kconfig!k:config
+                    primaryAccount: ${EksClusterName}
             profiles:
                 clouddriver:
                   dockerRegistry:
                     enabled: true
-                    primaryAccount: my-ecr-registry
+                    primaryAccount: eks-registry
                     accounts:
-                    - name: my-ecr-registry
+                    - name: eks-registry
                       address: ${SpinnakerRepository.RepositoryUri}
                       username: AWS
-                      passwordFile: /etc/passwords/my-ecr-registry.pass
+                      passwordFile: /etc/passwords/eks-registry.pass
                       trackDigests: true
                       repositories:
                       - ${ECRName}
                 igor:
                   docker-registry:
                     enabled: true
-            files:
-                kubeconfig-sp: |
-                  <FILE CONTENTS HERE> # Content from kubeconfig created by Spinnaker Tool
-          # spec.expose - This section defines how Spinnaker should be publicly exposed
           expose:
-            type: service  # Kubernetes LoadBalancer type (service/ingress), note: only "service" is supported for now
+            type: service
             service:
               type: LoadBalancer
 
-
-Outputs:

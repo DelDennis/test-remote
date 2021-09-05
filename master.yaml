@@ -645,6 +645,8 @@ Parameters:
     Default: Disabled
     AllowedValues: [Enabled, Disabled]
     Description: "Deploy latest version of Jenkins to cluster"
+  GitHubUser:
+    Type: String
 
 Conditions:
   EnablePrometheus: !Or
@@ -851,7 +853,7 @@ Resources:
         ProvisionMetricsServer: !If [EnableMetricsServer, 'Enabled', 'Disabled']
 
 #Does not work with default bucket as this is a custom template.
-#TODO add new condition based on QSS3BucketRegion to stop template from deploying if using default bucket
+#TODO add new condition based on QSS3BucketRegion to auto stop template from deploying if using default bucket
   JenkinsStack:
     Type: AWS::CloudFormation::Stack
     Condition: JenkinsEnabled
@@ -862,16 +864,16 @@ Resources:
         - S3Region: !If [ UsingDefaultBucket, !Ref 'AWS::Region', !Ref QSS3BucketRegion ]
       Parameters:
         EksClusterName: !GetAtt EKSStack.Outputs.EKSClusterName
-
-  EFSStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: !Sub
-        - 'https://${QSS3BucketName}.s3.${S3Region}.${AWS::URLSuffix}/templates/es-fluentbit-firehose.template.yaml'
-        - S3Region: !If [ UsingDefaultBucket, !Ref 'AWS::Region', !Ref QSS3BucketRegion ]
-      Parameters:
-        EksClusterName: !GetAtt EKSStack.Outputs.EKSClusterName
-        OIDCIssuerURL: !Join [ '', !Split [ 'https://', !GetAtt EKSStack.Outputs.OIDCIssuerURL ] ]
+#
+#  EFSStack:
+#    Type: AWS::CloudFormation::Stack
+#    Properties:
+#      TemplateURL: !Sub
+#        - 'https://${QSS3BucketName}.s3.${S3Region}.${AWS::URLSuffix}/templates/es-fluentbit-firehose.template.yaml'
+#        - S3Region: !If [ UsingDefaultBucket, !Ref 'AWS::Region', !Ref QSS3BucketRegion ]
+#      Parameters:
+#        EksClusterName: !GetAtt EKSStack.Outputs.EKSClusterName
+#        OIDCIssuerURL: !Join [ '', !Split [ 'https://', !GetAtt EKSStack.Outputs.OIDCIssuerURL ] ]
 
   SpinnakerStack:
     Type: AWS::CloudFormation::Stack
@@ -881,6 +883,7 @@ Resources:
         - S3Region: !If [ UsingDefaultBucket, !Ref 'AWS::Region', !Ref QSS3BucketRegion ]
       Parameters:
         EksClusterName: !GetAtt EKSStack.Outputs.EKSClusterName
+        GitHubUser: !Ref GitHubUser
 
 Outputs:
   EKSClusterName:

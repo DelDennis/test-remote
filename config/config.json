@@ -12,12 +12,13 @@
     "GrafanaIntegration" : "Enabled",
     "NumberOfAZs":"2",
     "RemoteAccessCIDR":"0.0.0.0/0",
-    "NumberOfNodes":"4",
+    "NumberOfNodes":"3",
     "MaxNumberOfNodes" : "4",
     "NodeInstanceType" : "t3.large",
     "AdditionalEKSAdminUserArn" : "arn:aws:iam::518899565528:user/homecli",
     "CalicoIntegration" : "Disabled",
     "CustomAmiId" : "ami-0eb9bfb457fec38d0",
-    "EnableJenkins": "Enabled"
+    "EnableJenkins" : "Enabled",
+    "GitHubUser" : "DelDennis"
   }
 }
