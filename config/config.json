@@ -3,7 +3,7 @@
     "AvailabilityZones":"us-west-1a, us-west-1b",
     "KeyPairName":"EKS-Gitops-Test",
     "QSS3BucketRegion":"us-west-1",
-    "QSS3BucketName":"eks-gitops",
+    "QSS3BucketName":"eks-directory-refactor",
     "EKSPublicAccessEndpoint":"Enabled",
     "EfsStorageClass":"Enabled",
     "ProvisionBastionHost" : "Disabled",
