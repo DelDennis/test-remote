@@ -21,7 +21,7 @@ Parameters:
   GitHubTokenSecretsManager:
     NoEcho: true
     Type: String
-    Default: '{{resolve:secretsmanager:/spinnaker/githubtoken:SecretString:GHToken}}'
+    Default: '{{resolve:secretsmanager:/throwaway/slightlyunsecured/ghdemotoken:SecretString:GHToken}}'
     Description: GitHub Token. Must be defined in AWS Secrets Manager. https://github.com/settings/tokens
   ECRName:
     Type: String
@@ -187,20 +187,22 @@ Resources:
         - !Sub [ '${Prefix}-ManagedNodeInstance', { Prefix: !FindInMap [ Config, Prefix, Value ] } ]
         - !Sub [ '${Prefix}-UnManagedNodeInstance', { Prefix: !FindInMap [ Config, Prefix, Value ] } ]
 
-  SpinnakerRepository:
-    Type: AWS::ECR::Repository
-    Properties:
-      RepositoryName: !Ref ECRName
-      ImageScanningConfiguration:
-        ScanOnPush: true
-      EncryptionConfiguration:
-        EncryptionType: 'AES256'
-      ImageTagMutability: 'IMMUTABLE'
+# Modified spinnaker service config to leave repository blank. This forces spinnaker into its default behaviour
+# of reading ALL available repositories in our registry.
+#  SpinnakerRepository:
+#    Type: AWS::ECR::Repository
+#    Properties:
+#      RepositoryName: !Ref ECRName
+#      ImageScanningConfiguration:
+#        ScanOnPush: true
+#      EncryptionConfiguration:
+#        EncryptionType: 'AES256'
+#      ImageTagMutability: 'IMMUTABLE'
 
   SpinnakerBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'spinnaker-bucket${AWS::Region}-${AWS::AccountId}'
+      BucketName: !Sub 'spinnaker-${AWS::Region}-${AWS::AccountId}'
       VersioningConfiguration:
         Status: Enabled
       BucketEncryption:
@@ -251,7 +253,6 @@ Resources:
     DependsOn:
       - SpinnakerServiceNamespace
       - SpinnakerOperatorHelmChart
-      - SpinnakerRepository
       - SpinnakerBucket
       - SpinnakerAccessKeyCredentials
       - TokenRefreshConfigmap
@@ -271,7 +272,7 @@ Resources:
               persistentStorage:
                 persistentStoreType: s3
                 s3:
-                  bucket: spinnaker-bucket${AWS::Region}-${AWS::AccountId}
+                  bucket: spinnaker-${AWS::Region}-${AWS::AccountId}
                   rootFolder: front50
                   region: ${AWS::Region}
                   accessKeyId: ${SpinnakerAccessKey}
@@ -305,7 +306,7 @@ Resources:
                       providerVersion: V2
                       permissions:
                       dockerRegistries:
-                        - accountName: eks-registry
+                        - accountName: ECR-${AWS::AccountId}
                       configureImagePullSecrets: true
                       cacheThreads: 1
                       namespaces: []
@@ -322,15 +323,14 @@ Resources:
                 clouddriver:
                   dockerRegistry:
                     enabled: true
-                    primaryAccount: eks-registry
+                    primaryAccount: ECR-${AWS::AccountId}
                     accounts:
-                    - name: eks-registry
-                      address: ${SpinnakerRepository.RepositoryUri}
+                    - name: ECR-${AWS::AccountId}
+                      address: https://${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
                       username: AWS
                       passwordFile: /etc/passwords/eks-registry.pass
                       trackDigests: true
-                      repositories:
-                      - ${ECRName}
+
                 igor:
                   docker-registry:
                     enabled: true

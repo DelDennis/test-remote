@@ -854,16 +854,17 @@ Resources:
 
 #Does not work with default bucket as this is a custom template.
 #TODO add new condition based on QSS3BucketRegion to auto stop template from deploying if using default bucket
-  JenkinsStack:
-    Type: AWS::CloudFormation::Stack
-    Condition: JenkinsEnabled
-    DependsOn: EKSStack
-    Properties:
-      TemplateURL: !Sub
-        - 'https://${QSS3BucketName}.s3.${S3Region}.${AWS::URLSuffix}/templates/jenkins.template.yaml'
-        - S3Region: !If [ UsingDefaultBucket, !Ref 'AWS::Region', !Ref QSS3BucketRegion ]
-      Parameters:
-        EksClusterName: !GetAtt EKSStack.Outputs.EKSClusterName
+#  JenkinsStack:
+#    Type: AWS::CloudFormation::Stack
+#    Condition: JenkinsEnabled
+#    DependsOn: EKSStack
+#    Properties:
+#      TemplateURL: !Sub
+#        - 'https://${QSS3BucketName}.s3.${S3Region}.${AWS::URLSuffix}/templates/jenkins.template.yaml'
+#        - S3Region: !If [ UsingDefaultBucket, !Ref 'AWS::Region', !Ref QSS3BucketRegion ]
+#      Parameters:
+#        EksClusterName: !GetAtt EKSStack.Outputs.EKSClusterName
+#        GitHubUser: !Ref GitHubUser
 #
 #  EFSStack:
 #    Type: AWS::CloudFormation::Stack

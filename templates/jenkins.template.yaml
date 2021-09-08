@@ -8,8 +8,44 @@ Parameters:
     Type: String
     Default: jenkins
     Description: (Optional) Kubernetes namespace to deploy Jenkins into.
+  GitHubUser:
+    Type: String
+    Description: GitHub username or organization
+  GitHubTokenSecretsManager:
+    NoEcho: true
+    Type: String
+    Default: '{{resolve:secretsmanager:/throwaway/slightlyunsecured/ghdemotoken:SecretString:GHToken}}'
+    Description: GitHub Token. Must be defined in AWS Secrets Manager. https://github.com/settings/tokens
+
 Resources:
 
+# TODO: Further restrict user policy. Poweruser for now so that I can experiment with various AWS jenkins plugins.
+# For now this only needs ECR permissions for push & pull actions.
+  JenkinsAWSUser:
+    Type: AWS::IAM::User
+    Description: User identity Jenkins uses to manage AWS resources
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/PowerUserAccess
+
+  JenkinsAccessKey:
+    DependsOn: JenkinsAWSUser
+    Type: AWS::IAM::AccessKey
+    Description: Generate AccessKey for Spinnaker
+    Properties:
+      UserName: !Ref JenkinsAWSUser
+
+  JenkinsAccessKeyCredentials:
+    DependsOn: [JenkinsAWSUser,JenkinsAccessKey]
+    Type: AWS::SecretsManager::Secret
+    Description: Store the access key credentials for Jenkins in a secure location
+    Properties:
+      Description: Jenkins user access key credentials
+      SecretString: !Sub |
+        {
+          "AccessKeyId":"${JenkinsAccessKey}",
+          "SecretAccessKey":"${JenkinsAccessKey.SecretAccessKey}"
+        }
   JenkinsNamespace:
     Type: "AWSQS::Kubernetes::Resource"
     Properties:
@@ -37,13 +73,13 @@ Resources:
 
   JenkinsHelmChart:
     Type: "AWSQS::Kubernetes::Helm"
-    DependsOn: JenkinsServiceAccount
+    DependsOn: [JenkinsAWSUser,JenkinsAccessKey,JenkinsServiceAccount]
     Properties:
       ClusterID: !Ref EksClusterName
       Namespace: !Ref Namespace
       Repository: https://charts.jenkins.io
       Chart: stable/jenkins
-      ValueYaml: |
+      ValueYaml: !Sub |
         controller:
           # Used for label app.kubernetes.io/component
           componentName: "jenkins-controller"
@@ -64,7 +100,32 @@ Resources:
             - lockable-resources:2.11
             - branch-api:2.6.5
             - blueocean:1.24.8
-
+            - scm-filter-branch-pr:0.5.1
+            - amazon-ecr:1.6
+          JCasC:
+            configScripts:
+              jenkins-casc-configs: |
+                credentials:
+                  system:
+                    domainCredentials:
+                      - credentials:
+                        - usernamePassword:
+                            description: "Github access username and token for Jenkins"
+                            id: "GitHubUserToken"
+                            password: "${GitHubTokenSecretsManager}"
+                            scope: GLOBAL
+                            username: "${GitHubUser}"
+                        - aws:
+                            scope: GLOBAL
+                            id: "AWSJenkinsUser"
+                            accessKey: "${JenkinsAccessKey}"
+                            secretKey: "${JenkinsAccessKey.SecretAccessKey}"
+                            description: "AWS Credentials for Jenkins"
+                        - string:
+                            scope: GLOBAL
+                            id: "ECRRegistry"
+                            secret: "${SECRET_TEXT}"
+                            description: "ECR base registry URL for pipeline use: ex. ACCOUNT.dkr.ecr.REGION.amazonaws.com"
           resources:
             requests:
               cpu: "1024m"
