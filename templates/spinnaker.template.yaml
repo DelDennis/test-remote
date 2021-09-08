@@ -167,6 +167,7 @@ Resources:
                     kubectl config view --flatten > /tmp/config;
                     kubectl -n ${ServiceNamespace} create secret generic spin-kconfig \
                         --from-file=/tmp/config;
+                    # sleep to give time for secret to enter create. could also -watch then exit.
                     sleep 3s;
               restartPolicy: Never
 
