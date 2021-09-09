@@ -124,7 +124,7 @@ Resources:
                         - string:
                             scope: GLOBAL
                             id: "ECRRegistry"
-                            secret: "${SECRET_TEXT}"
+                            secret: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com"
                             description: "ECR base registry URL for pipeline use: ex. ACCOUNT.dkr.ecr.REGION.amazonaws.com"
           resources:
             requests:
@@ -144,9 +144,16 @@ Resources:
           create: false
           name: "jenkins"
 
-
-
-
-Outputs:
-  JenkinsHelmChart:
-    Value: !Ref JenkinsHelmChart
+#  JenkinsLoadBalancerURL:
+#    Type: AWSQS::Kubernetes::Get
+#    DependsOn: JenkinsHelmChart
+#    Properties:
+#      ClusterName: !Ref EksClusterName
+#      Namespace: !Ref Namespace
+#      Name: !Sub 'service/spin-deck'
+#      JsonPath: '{.status.loadBalancer.ingress[0].hostname}'
+#      Retries: 3
+#
+#Outputs:
+#  DeckUI:
+#    Value: !GetAtt JenkinsLoadBalancerURL.Response
