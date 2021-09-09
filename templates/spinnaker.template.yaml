@@ -340,3 +340,16 @@ Resources:
             service:
               type: LoadBalancer
 
+  UILoadBalancer:
+    Type: AWSQS::Kubernetes::Get
+    DependsOn: SpinnakerService
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: !Ref ServiceNamespace
+      Name: !Sub 'service/spin-deck'
+      JsonPath: '{.status.loadBalancer.ingress[0].hostname}'
+      Retries: 3
+
+Outputs:
+  DeckUI:
+    Value: !GetAtt UILoadBalancer.Response
