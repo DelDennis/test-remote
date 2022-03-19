@@ -3,7 +3,7 @@
     "AvailabilityZones":"us-west-1a, us-west-1b",
     "KeyPairName":"EKS-Gitops-Test",
     "QSS3BucketRegion":"us-west-1",
-    "QSS3BucketName":"eks-directory-refactor",
+    "QSS3BucketName":"eks-gitops",
     "EKSPublicAccessEndpoint":"Enabled",
     "EfsStorageClass":"Enabled",
     "ProvisionBastionHost" : "Disabled",
@@ -12,13 +12,14 @@
     "GrafanaIntegration" : "Enabled",
     "NumberOfAZs":"2",
     "RemoteAccessCIDR":"0.0.0.0/0",
-    "NumberOfNodes":"0",
+    "NumberOfNodes":"3",
     "MaxNumberOfNodes" : "4",
     "NodeInstanceType" : "t3.large",
     "AdditionalEKSAdminUserArn" : "arn:aws:iam::518899565528:user/homecli",
     "CalicoIntegration" : "Disabled",
     "CustomAmiId" : "ami-0eb9bfb457fec38d0",
     "EnableJenkins" : "Enabled",
+    "SpinnakerIntegration" : "Enabled",
     "GitHubUser" : "DelDennis"
   }
 }

@@ -647,6 +647,10 @@ Parameters:
     Description: "Deploy latest version of Jenkins to cluster"
   GitHubUser:
     Type: String
+    Default: ""
+  SpinnakerIntegration:
+    Type: String
+    Default: Disabled
 
 Conditions:
   EnablePrometheus: !Or
@@ -672,9 +676,11 @@ Conditions:
   UsingDefaultBucket: !Equals [!Ref QSS3BucketName, 'aws-quickstart']
   WindowsNodes: !Equals [!Ref NodeGroupOS, 'Windows']
   VaultEnabled: !Equals [!Ref VaultIntegration, 'Enabled']
+# Cannot use AWS Quickstart bucket due to additional custom workloads specific to this fork
   JenkinsEnabled: !And
     - !Equals [!Ref EnableJenkins, 'Enabled']
     - !Not [!Equals [!Ref QSS3BucketName, ""]]
+  SpinnakerEnabled: !Equals [!Ref SpinnakerIntegration, "Enabled"]
 
 Mappings:
   Config:
@@ -878,6 +884,7 @@ Resources:
 
   SpinnakerStack:
     Type: AWS::CloudFormation::Stack
+    Condition: SpinnakerEnabled
     Properties:
       TemplateURL: !Sub
         - 'https://${QSS3BucketName}.s3.${S3Region}.${AWS::URLSuffix}/templates/spinnaker.template.yaml'
