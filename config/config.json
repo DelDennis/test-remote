@@ -1,5 +1,7 @@
 {
   "Parameters":{
+    "PerAccountSharedResources": "Yes",
+    "PerRegionSharedResources":"Yes",
     "AvailabilityZones":"us-west-1a, us-west-1b",
     "KeyPairName":"EKS-Gitops-Test",
     "QSS3BucketRegion":"us-west-1",
